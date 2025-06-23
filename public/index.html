@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система отметки посещаемости</title>
+    <script src="https://cdn.tailwindcss.com"></script> <!--Бибилотека стилей-->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script><!--Бибилотека создания кр кода-->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script><!--Бибилотека считывания кр кода-->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script> <!--Бибилотека для моделей проверки лица-->
+    <!--Еще стили-->
+    <style> 
+        body { font-family: Arial, sans-serif; }
+        .hidden { display: none; }
+        #videoContainer { position: relative; width: 100%; max-width: 400px; margin: 10px auto; }
+        #video { width: 100%; height: auto; border: 2px solid #ccc; }
+        #canvas { display: none; }
+        #qrOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #faceStatus { margin-top: 10px; text-align: center; }
+        #journalTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #journalTable th, #journalTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #journalTable th { background-color: #f2f2f2; }
+        #photoPreview { width: 100%; max-width: 400px; margin: 10px auto; border: 2px solid #ccc; }
+        #photoButtons { display: flex; justify-content: space-between; margin-top: 10px; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full" style="max-width: 32rem;">
+        <!-- Переключатель интерфейсов -->
+        <div class="flex justify-center mb-4">
+            <button id="teacherBtn" class="bg-blue-500 text-white px-4 py-2 rounded mr-2">Преподаватель</button>
+            <button id="studentBtn" class="bg-green-500 text-white px-4 py-2 rounded">Студент</button>
+        </div>
+
+        <!-- Форма входа для преподавателя -->
+        <div id="loginSection" class="hidden">
+            <h2 class="text-2xl font-bold mb-4 text-center">Вход для преподавателя</h2>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Имя пользователя</label>
+                <input id="username" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="Введите имя пользователя">
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Пароль</label>
+                <input id="password" type="password" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="Введите пароль">
+            </div>
+            <button id="loginBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Войти</button>
+            <p id="loginStatus" class="mt-4 text-center text-gray-600"></p>
+        </div>
+
+        <!-- Интерфейс преподавателя -->
+        <div id="teacherSection" class="hidden">
+            <h2 class="text-2xl font-bold mb-4 text-center">Преподаватель</h2>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Название предмета</label>
+                <input id="subject" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="Введите название предмета">
+            </div>
+            <button id="startBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Запуск</button>
+            <button id="viewJournalBtn" class="w-full bg-gray-600 text-white py-2 rounded hover:bg-gray-700 mt-2">Посмотреть журнал</button>
+            <div class="mb-4 mt-2">
+                <label class="block text-sm font-medium text-gray-700">Выберите лекцию</label>
+                <select id="lectureSelect" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                    <option value="">Все лекции</option>
+                </select>
+            </div>
+            <button id="exportJournalBtn" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 mt-2">Экспорт в Excel</button>
+            <div id="qrCode" class="mt-4 flex justify-center"></div>
+            <div id="journalSection" class="hidden mt-4">
+                <h3 class="text-xl font-bold mb-2">Журнал посещаемости</h3>
+                <table id="journalTable">
+                    <thead>
+                        <tr>
+                            <th>Предмет</th>
+                            <th>ФИО</th>
+                            <th>Группа</th>
+                            <th>Время</th>
+                        </tr>
+                    </thead>
+                    <tbody id="journalBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Интерфейс студента -->
+        <div id="studentSection">
+            <h2 class="text-2xl font-bold mb-4 text-center">Студент</h2>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">ФИО</label>
+                <input id="fullName" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="Введите ФИО">
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Группа</label>
+                <input id="group" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="Введите группу">
+            </div>
+            <button id="scanBtn" class="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700 mb-2">Сканировать QR-код</button>
+            <button id="stopScanBtn" class="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700 mb-2 hidden">Остановить сканирование</button>
+            <p class="text-sm text-gray-600 mb-4">Наведите камеру на QR-код. Убедитесь, что он чёткий и хорошо освещён.</p>
+            <div id="videoContainer" class="hidden">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas"></canvas>
+                <canvas id="qrOverlay" style="width: 100%; height: 100%;"></canvas>
+            </div>
+            <button id="capturePhotoBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mt-2 hidden">Сделать фото</button>
+            <div id="photoPreviewContainer" class="hidden">
+                <img id="photoPreview" alt="Предпросмотр фото">
+                <div id="photoButtons">
+                    <button id="retakePhotoBtn" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Переснять</button>
+                    <button id="submitPhotoBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Отправить</button>
+                </div>
+            </div>
+            <p id="status" class="mt-4 text-center text-gray-600"></p>
+            <p id="faceStatus" class="text-center text-gray-600"></p>
+        </div>
+    </div>
+
+    <script>
+        let qrInterval = null; 
+        let scanning = false;
+        let isVerifyingFace = false;
+        let authToken = null;
+        let capturedPhoto = null;  
+        //подтягивание элементов со страницы по id 
+        const qrCodeDiv = document.getElementById('qrCode');
+        const subjectInput = document.getElementById('subject');
+        const startBtn = document.getElementById('startBtn');
+        const viewJournalBtn = document.getElementById('viewJournalBtn');
+        const exportJournalBtn = document.getElementById('exportJournalBtn');
+        const lectureSelect = document.getElementById('lectureSelect');
+        const fullNameInput = document.getElementById('fullName');
+        const groupInput = document.getElementById('group');
+        const scanBtn = document.getElementById('scanBtn');
+        const stopScanBtn = document.getElementById('stopScanBtn');
+        const statusP = document.getElementById('status');
+        const faceStatusP = document.getElementById('faceStatus');
+        const loginSection = document.getElementById('loginSection');
+        const teacherSection = document.getElementById('teacherSection');
+        const studentSection = document.getElementById('studentSection');
+        const teacherBtn = document.getElementById('teacherBtn');
+        const studentBtn = document.getElementById('studentBtn');
+        const loginBtn = document.getElementById('loginBtn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginStatusP = document.getElementById('loginStatus');
+        const videoContainer = document.getElementById('videoContainer');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const qrOverlay = document.getElementById('qrOverlay');
+        const journalSection = document.getElementById('journalSection');
+        const journalBody = document.getElementById('journalBody');
+        const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+        const photoPreviewContainer = document.getElementById('photoPreviewContainer');
+        const photoPreview = document.getElementById('photoPreview');
+        const retakePhotoBtn = document.getElementById('retakePhotoBtn');
+        const submitPhotoBtn = document.getElementById('submitPhotoBtn');
+        let stream = null;
+
+        const serverHost = window.location.hostname;
+        const serverUrl = `${window.location.protocol}//${serverHost}${window.location.port ? ':' + window.location.port : ''}`;
+
+        async function loadFaceApiModels() { //ЗАГРУЗКА МОДЕЛЕЙ ДЛЯ ЛИЦ
+            try {
+                console.log('Загрузка моделей face-api.js...');
+                statusP.textContent = 'Загрузка моделей face-api.js...';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+                ]);
+                console.log('Модели face-api.js загружены');
+                statusP.textContent = 'Модели face-api.js загружены';
+            } catch (err) {
+                console.error('Ошибка загрузки моделей face-api.js:', err);
+                faceStatusP.textContent = 'Ошибка загрузки моделей распознавания лиц';
+                faceStatusP.classList.add('text-red-500');
+            }
+        }
+        loadFaceApiModels();
+
+        teacherBtn.addEventListener('click', () => { //КНОПКА ПЕРЕХОДА В РЕЖИМ ПРЕПОДА
+            //показывает форму входа или интерфейс, если токен есть.
+            if (authToken) {
+                loginSection.classList.add('hidden');
+                teacherSection.classList.remove('hidden');
+                studentSection.classList.add('hidden');
+                loadLectures();
+            } else {
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+                studentSection.classList.add('hidden');
+            }
+            stopCamera();
+        });
+
+        studentBtn.addEventListener('click', () => { //КНОПКА РЕЖИМ СТУДЕНТА
+            studentSection.classList.remove('hidden');
+            teacherSection.classList.add('hidden');
+            loginSection.classList.add('hidden');
+            stopCamera();
+        });
+
+        loginBtn.addEventListener('click', async () => { // КНОПКА ВХОДА В АККАУНТ ПРЕПОДА
+            //Проверяет заполненность полей.
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            if (!username || !password) {
+                loginStatusP.textContent = 'Введите имя пользователя и пароль';
+                loginStatusP.classList.add('text-red-500');
+                return;
+            }
+
+            //Отправляет POST-запрос на /login, сохраняет токен, перенаправляет администратора или показывает интерфейс преподавателя.
+            try {
+                const response = await fetch(`${serverUrl}/login`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password }),
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const result = await response.json();
+                if (result.success) {
+                    authToken = result.token;
+                    localStorage.setItem('authToken', authToken); 
+                    if (result.isAdmin) {
+                        window.location.href = '/admin';
+                    } else {
+                        loginSection.classList.add('hidden');
+                        teacherSection.classList.remove('hidden');
+                        loginStatusP.textContent = 'Вход успешен!';
+                        loginStatusP.classList.remove('text-red-500');
+                        loginStatusP.classList.add('text-green-500');
+                        loadLectures();
+                    }
+                } else {
+                    loginStatusP.textContent = result.error || 'Ошибка входа';
+                    loginStatusP.classList.add('text-red-500');
+                }
+            } catch (err) {
+                console.error('Ошибка входа:', err);
+                loginStatusP.textContent = 'Ошибка сервера: ' + err.message;
+                loginStatusP.classList.add('text-red-500');
+            }
+        });
+
+        function generateUniqueCode() { // ГЕНЕРАЦИЯ УНИКАЛЬНОГО КОДА
+            return Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+        }
+
+        function generateLectureId(subject) { //ГЕНЕРАЦИЯ КОДА ЛЕКЦИИ (предмет + время)
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            return `${subject.replace(/\s+/g, '_')}_${hours}:${minutes}`;
+        }
+
+        startBtn.addEventListener('click', () => { //КНОПКА СТАРТ ДЛЯ НАЧАЛА ГЕНЕРАЦИИ КОДА
+            //Проверяет авторизацию и предмет.
+            if (!authToken) {
+                alert('Требуется авторизация');
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+                return;
+            }
+
+            const subject = subjectInput.value.trim();
+            if (!subject) {
+                alert('Введите название предмета');
+                return;
+            }
+
+            //Генерирует QR-код и обновляет каждые 2 секунды.
+            const lectureId = generateLectureId(subject);
+            if (qrInterval) clearInterval(qrInterval);
+            qrCodeDiv.innerHTML = '';
+            generateQRCode(subject, lectureId);
+
+            qrInterval = setInterval(() => {
+                qrCodeDiv.innerHTML = '';
+                generateQRCode(subject, lectureId);
+            }, 2000); // ИНТЕРВАЛ 2 СЕКУНДЫ
+        });
+
+        function generateQRCode(subject, lectureId) { // ГЕНЕРАЦИЯ КР КОДА
+            const uniqueCode = generateUniqueCode();
+            const qrText = uniqueCode;
+
+            new QRCode(qrCodeDiv, {
+                text: qrText,
+                width: 300,
+                height: 300,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            fetch(`${serverUrl}/storeCode`, {
+                method: 'POST',
+                body: JSON.stringify({ subject, code: uniqueCode, timestamp: Date.now(), lectureId }),
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': authToken
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => console.log('Ответ от /storeCode:', data))
+                .catch(error => {
+                    console.error('Ошибка при отправке QR-кода:', error);
+                    alert('Ошибка авторизации или сервера. Пожалуйста, войдите снова.');
+                    authToken = null;
+                    loginSection.classList.remove('hidden');
+                    teacherSection.classList.add('hidden');
+                });
+        }
+
+        async function loadLectures() { // ФУНКЦИЯ ЗАГРУЗКИ ТАБЛИЦЫ С ЛЕКЦИЯМИ
+            if (!authToken) return;
+            try { //запрос к /lectures с заголовком Authorization, содержащим токен, для получения списка лекций.
+                const response = await fetch(`${serverUrl}/lectures`, {
+                    headers: { 'Authorization': authToken }
+                });
+                const result = await response.json();
+                if (result.success) { //Очищает выпадающий список и добавляет опцию по умолчанию "Все лекции".
+                    lectureSelect.innerHTML = '<option value="">Все лекции</option>';
+                    result.lectures.forEach(lecture => {
+                        const option = document.createElement('option');
+                        option.value = lecture.lecture_id;
+                        option.textContent = lecture.lecture_id;
+                        lectureSelect.appendChild(option);
+                    });
+                } else {
+                    alert(result.error || 'Ошибка получения списка лекций');
+                }
+            } catch (err) {
+                console.error('Ошибка получения списка лекций:', err);
+                alert('Ошибка сервера. Пожалуйста, войдите снова.');
+                authToken = null;
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+            }
+        }
+
+        viewJournalBtn.addEventListener('click', async () => { // кнопка "посмотреть журнал"
+            if (!authToken) {
+                alert('Требуется авторизация');
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+                return;
+            }
+
+            try { //Получает выбранный lectureId из <select>.
+                const lectureId = lectureSelect.value;
+                const url = lectureId ? `${serverUrl}/journal?lectureId=${encodeURIComponent(lectureId)}` : `${serverUrl}/journal`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': authToken }
+                });
+                const result = await response.json();
+                if (result.success) { //показывает секцию журнала 
+                    journalSection.classList.remove('hidden');
+                    journalBody.innerHTML = '';
+                    result.records.forEach(record => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${record.subject}</td>
+                            <td>${record.full_name}</td>
+                            <td>${record.group_name}</td>
+                            <td>${new Date(record.attendance_time).toLocaleString()}</td>
+                        `;
+                        journalBody.appendChild(row);
+                    });
+                } else {
+                    alert(result.error || 'Ошибка получения журнала');
+                }
+            } catch (err) {
+                console.error('Ошибка получения журнала:', err);
+                alert('Ошибка сервера. Пожалуйста, войдите снова.');
+                authToken = null;
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+            }
+        });
+
+        exportJournalBtn.addEventListener('click', async () => { // ФУНКЦИЯ ЭКСПОРТА ТАБЛИЦ В EXCEL
+            if (!authToken) {
+                alert('Требуется авторизация');
+                loginSection.classList.remove('hidden');
+                teacherSection.classList.add('hidden');
+                return;
+            }
+
+            try {
+                const lectureId = lectureSelect.value;
+                const url = lectureId ? `${serverUrl}/export-journal?lectureId=${encodeURIComponent(lectureId)}` : `${serverUrl}/export-journal`; //Формирует URL для экспорта журнала, добавляя lectureId при необходимости.
+                console.log('Запрос экспорта:', url);
+                const response = await fetch(url, {
+                    headers: { 'Authorization': authToken }
+                });
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        throw new Error('Ошибка авторизации');
+                    }
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorData.error || 'Неизвестная ошибка'}`);
+                }
+                //создает временную ссылку для скачивания
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = lectureId ? `attendance_${lectureId.replace(/\s+/g, '_')}.xlsx` : 'attendance_all.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(downloadUrl);
+            } catch (err) {
+                console.error('Ошибка экспорта журнала:', err);
+                if (err.message.includes('Ошибка авторизации')) {
+                    alert('Ошибка авторизации. Пожалуйста, войдите снова.');
+                    authToken = null;
+                    loginSection.classList.remove('hidden');
+                    teacherSection.classList.add('hidden');
+                } else {
+                    alert(`Ошибка экспорта: ${err.message}`);
+                }
+            }
+        });
+
+        scanBtn.addEventListener('click', async () => { // КНОПКА СКАН ДЛЯ СКАНИРОВАНИЯ КР КОДА
+            //Проверяет поддержку API камеры в браузере.
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                statusP.textContent = 'Браузер не поддерживает камеру';
+                statusP.classList.add('text-red-500');
+                return;
+            }
+
+            //Проверяет, используется ли HTTPS или localhost (необходимы для доступа к камере).
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                statusP.textContent = 'Требуется HTTPS.';
+                statusP.classList.add('text-red-500');
+                return;
+            }
+
+            //Запрашивает доступ к камере
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment', 
+                        width: { ideal: 640, max: 1280 }, 
+                        height: { ideal: 480, max: 720 } 
+                    }
+                });
+                //Устанавливает видеопоток, показывает видео и кнопку остановки,
+                video.srcObject = stream;
+                videoContainer.classList.remove('hidden');
+                stopScanBtn.classList.remove('hidden');
+                scanBtn.classList.add('hidden');
+                scanning = true;
+
+                //запускается видеопоток и вызывает сканирование кр
+                video.onloadedmetadata = () => {
+                    video.play().then(() => {
+                        console.log(`Видео начато: ${video.videoWidth}x${video.videoHeight}`);
+                        scanQRCode();
+                    }).catch(err => {
+                        console.error('Ошибка воспроизведения:', err);
+                        statusP.textContent = 'Ошибка видео: ' + err.message;
+                        statusP.classList.add('text-red-500');
+                        stopCamera();
+                    });
+                };
+            } catch (err) {
+                console.error('Ошибка камеры:', err);
+                statusP.textContent = 'Ошибка камеры: ' + err.message;
+                statusP.classList.add('text-red-500');
+                scanBtn.classList.remove('hidden');
+            }
+        });
+
+        function stopCamera(preserveStatus = false) { // ФУНКЦИЯ ОСТАНОВКИ КАМЕРЫ
+            if (stream) { //Если поток существует, останавливает все и Скрывает элементы интерфейса:
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+                videoContainer.classList.add('hidden');
+                stopScanBtn.classList.add('hidden');
+                scanBtn.classList.remove('hidden');
+                capturePhotoBtn.classList.add('hidden');
+                photoPreviewContainer.classList.add('hidden');
+                scanning = false;
+                qrOverlay.getContext('2d').clearRect(0, 0, qrOverlay.width, qrOverlay.height);
+                faceStatusP.textContent = '';
+                if (!preserveStatus) {
+                    statusP.textContent = '';
+                }
+                console.log('Камера остановлена');
+            }
+        }
+
+        stopScanBtn.addEventListener('click', stopCamera); //привязывает stopCamera к кнопке остановки.
+
+        async function checkQRCode(qrCode) { // ФУНКЦИЯ ПРОВЕРКИ КР КОДА
+            //Проверяет заполненность полей ФИО и группы
+            const fullName = fullNameInput.value.trim();
+            const group = groupInput.value.trim();
+
+            if (!fullName || !group) {
+                statusP.textContent = 'Заполните поля ФИО и Группа перед сканированием QR-кода';
+                statusP.classList.add('text-red-500');
+                return null;
+            }
+
+            try { //Отправляет POST-запрос к /checkAndSave с данными QR-кода, ФИО и группы.
+                const response = await fetch(`${serverUrl}/checkAndSave`, {
+                    method: 'POST',
+                    body: JSON.stringify({ code: qrCode, fullName, group }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                //Логирует ответ и URL фото студента.
+                console.log('Ответ от /checkAndSave:', result);
+                console.log('Сформированный URL для фото:', `${serverUrl}${result.photoPath}`);
+                if (result.success) {
+                    statusP.textContent = 'QR-код подтверждён! Сделайте фото лица...';
+                    statusP.classList.remove('text-red-500');
+                    statusP.classList.add('text-green-500');
+                    return result;
+                } else {
+                    statusP.textContent = result.error || 'QR-код не найден или устарел';
+                    statusP.classList.add('text-red-500');
+                    return null;
+                }
+            } catch (err) {
+                console.error('Ошибка проверки QR-кода:', err);
+                statusP.textContent = 'Ошибка сервера: ' + err.message;
+                statusP.classList.add('text-red-500');
+                return null;
+            }
+        }
+
+        function scanQRCode() { // ФУНКЦИЯ СКАНИРОВАНИЯ КР КОДА
+            if (!scanning) { //Проверяет флаг scanning. Если выключен, завершает выполнение.
+                console.log('Сканирование остановлено');
+                return;
+            }
+
+            //Получает 2D-контексты для холста обработки и наложения.
+            const context = canvas.getContext('2d');
+            const overlayContext = qrOverlay.getContext('2d');
+
+            function tick() { //функция tick для периодического сканирования
+                if (!scanning) {
+                    console.log('Цикл tick остановлен');
+                    return;
+                }
+
+                //Проверяет, готово ли видео и имеет ли оно размеры.
+                if (video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+                    canvas.width = video.videoWidth; //Устанавливает размеры холстов равными видео,
+                    canvas.height = video.videoHeight;
+                    qrOverlay.width = video.videoWidth;
+                    qrOverlay.height = video.videoHeight;
+                    console.log('Размеры холста:', { width: canvas.width, height: canvas.height });
+
+                    try { //Рисует кадр видео на холсте, получает данные изображения
+                        //Использует библиотеку jsQR для поиска QR-кода в данных изображения.
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        console.log('Изображение захвачено');
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: 'attemptBoth'
+                        });
+
+                        overlayContext.clearRect(0, 0, qrOverlay.width, qrOverlay.height); //Очищает наложение для новой рамки.
+                        if (code && code.data && !isVerifyingFace) { //Если QR-код найден и проверка лица не выполняется
+                            console.log('QR-код распознан:', code.data);
+                            drawQRBoundingBox(overlayContext, code.location); //Рисует зелёную рамку вокруг кода.
+                            scanning = false; //Отключает сканирование.
+                            checkQRCode(code.data).then(result => { //Вызывает checkQRCode.  
+                                if (result) { //Если результат есть, запускает проверку лица.
+                                    verifyFace(code.data, result.subject, result.photoPath, result.lectureId);
+                                } else { //Иначе возобновляет сканирование через 200 мс.
+                                    scanning = true;
+                                    statusP.textContent = 'Наведите камеру на QR-код...';
+                                    statusP.classList.remove('text-red-500', 'text-green-500');
+                                    setTimeout(() => requestAnimationFrame(tick), 200); // КАЖДЫЕ 0.2 СЕКУНДЫ
+                                }
+                            });
+                            return;
+                        } else if (!code) {
+                            console.log('QR-код не найден');
+                            if (!isVerifyingFace) {
+                                statusP.textContent = 'Наведите камеру на QR-код...';
+                                statusP.classList.remove('text-red-500', 'text-green-500');
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Ошибка сканирования:', err);
+                        statusP.textContent = 'Ошибка сканирования: ' + err.message;
+                        statusP.classList.add('text-red-500');
+                        scanning = false;
+                        stopCamera();
+                        isVerifyingFace = false;
+                    }
+                } else {
+                    console.log('Видео не готово:', {
+                        readyState: video.readyState,
+                        videoWidth: video.videoWidth,
+                        videoHeight: video.videoHeight
+                    });
+                    statusP.textContent = 'Ожидание видеопотока...';
+                    statusP.classList.remove('text-red-500', 'text-green-500');
+                }
+
+                setTimeout(() => requestAnimationFrame(tick), 200);
+            }
+            requestAnimationFrame(tick);
+        }
+
+        function drawQRBoundingBox(context, location) { // ОТРИСОВКА РАМКИ QR КОДА
+            if (!location) return;
+            const { topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner } = location; //Проверяет наличие координат углов QR-кода.
+            context.strokeStyle = 'green';
+            context.lineWidth = 4;
+            context.beginPath();
+            context.moveTo(topLeftCorner.x, topLeftCorner.y);
+            context.lineTo(topRightCorner.x, topRightCorner.y);
+            context.lineTo(bottomRightCorner.x, bottomRightCorner.y);
+            context.lineTo(bottomLeftCorner.x, bottomLeftCorner.y);
+            context.closePath();
+            context.stroke();
+        }
+
+        async function verifyFace(qrCode, subject, photoPath, lectureId) { // ФУНКЦИЯ ПРОВЕРКИ ЛИЦА
+            //Получает ФИО, группу, QR-код, инициализирует счётчик попыток
+            const fullName = fullNameInput.value.trim();
+            const group = groupInput.value.trim();
+            const code = qrCode.trim();
+            let attemptCount = 1; // Счётчик попыток
+            const maxAttempts = 3; // Максимум попыток
+
+            if (!fullName || !group) { //Проверяет заполненность полей
+                statusP.textContent = 'Заполните поля ФИО и Группа';
+                statusP.classList.add('text-red-500');
+                stopCamera();
+                scanning = true;
+                isVerifyingFace = false;
+                return;
+            }
+
+            isVerifyingFace = true;
+
+            try { //Останавливает текущий поток, запрашивает фронтальную камеру.
+                stopCamera();
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640, max: 1280 }, 
+                        height: { ideal: 480, max: 720 } 
+                    }
+                }); 
+                //Устанавливает поток, показывает видео и кнопку съёмки
+                video.srcObject = stream;
+                videoContainer.classList.remove('hidden');
+                capturePhotoBtn.classList.remove('hidden');
+                console.log('Фронтальная камера запущена');
+
+                video.onloadedmetadata = () => { //запускает видео, устанавливает размеры холста. При ошибке останавливает процесс.
+                    video.play().then(() => {
+                        console.log(`Видео с фронтальной камеры начато: ${video.videoWidth}x${video.videoHeight}`);
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                    }).catch(err => {
+                        console.error('Ошибка воспроизведения фронтальной камеры:', err);
+                        statusP.textContent = 'Ошибка видео: ' + err.message;
+                        statusP.classList.add('text-red-500');
+                        stopCamera();
+                        scanning = true;
+                        isVerifyingFace = false;
+                    });
+                };
+
+                // Загрузка эталонного изображения
+                const referenceImage = new Image();
+                referenceImage.crossOrigin = 'Anonymous';
+                referenceImage.src = `${serverUrl}/${photoPath}`;
+
+                await new Promise((resolve, reject) => { //Ждёт загрузки фото, логирует успех или ошибку.
+                    referenceImage.onload = () => {
+                        console.log('Фото студента успешно загружено:', referenceImage.src);
+                        resolve();
+                    };
+                    referenceImage.onerror = () => {
+                        console.error('Не удалось загрузить фото:', referenceImage.src);
+                        reject(new Error(`Не удалось загрузить фото студента: ${referenceImage.src}`));
+                    };
+                });
+
+                //Использует face-api.js для детекции лица
+                const referenceDetections = await faceapi 
+                    .detectSingleFace(referenceImage, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+
+                    //Если лицо не найдено, показывает ошибки и завершает процесс.
+                if (!referenceDetections) {
+                    faceStatusP.textContent = 'Лицо на эталонном фото не найдено';
+                    faceStatusP.classList.add('text-red-500');
+                    statusP.textContent = 'Ошибка: Проверка лица не удалась';
+                    statusP.classList.add('text-red-500');
+                    stopCamera();
+                    scanning = true;
+                    isVerifyingFace = false;
+                    return;
+                }
+
+                // Обработчик кнопки "Сделать фото".захватывает кадр, сохраняет как JPEG, показывает предпросмотр.
+                capturePhotoBtn.onclick = () => {
+                    const context = canvas.getContext('2d');
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    capturedPhoto = new Image();
+                    capturedPhoto.src = canvas.toDataURL('image/jpeg');
+                    videoContainer.classList.add('hidden');
+                    capturePhotoBtn.classList.add('hidden');
+                    photoPreviewContainer.classList.remove('hidden');
+                    photoPreview.src = capturedPhoto.src;
+                    faceStatusP.textContent = `Проверьте фото и отправьте или переснимите (попытка ${attemptCount}/${maxAttempts})`;
+                    faceStatusP.classList.remove('text-red-500', 'text-green-500');
+                };
+
+                // Обработчик кнопки "Переснять".возвращает интерфейс к съёмке, сбрасывает фото.
+                retakePhotoBtn.onclick = () => {
+                    photoPreviewContainer.classList.add('hidden');
+                    videoContainer.classList.remove('hidden');
+                    capturePhotoBtn.classList.remove('hidden');
+                    capturedPhoto = null;
+                    faceStatusP.textContent = `Наведите камеру на лицо и сделайте фото (попытка ${attemptCount}/${maxAttempts})`;
+                    faceStatusP.classList.remove('text-red-500', 'text-green-500');
+                };
+
+                // Обработчик кнопки "Отправить".проверяет наличие фото.
+                submitPhotoBtn.onclick = async () => {
+                    if (!capturedPhoto) {
+                        faceStatusP.textContent = 'Сначала сделайте фото';
+                        faceStatusP.classList.add('text-red-500');
+                        return;
+                    }
+
+                    //находит лицо на снятом фото
+                    try {
+                        const liveDetections = await faceapi
+                            .detectSingleFace(capturedPhoto, new faceapi.TinyFaceDetectorOptions())
+                            .withFaceLandmarks()
+                            .withFaceDescriptor();
+
+
+                            //Если лицо не найдено: увеличивает счётчик попыток, просит повторить или завершает после 3 попыток.
+                        if (!liveDetections) {
+                            attemptCount++;
+                            if (attemptCount <= maxAttempts) {
+                                faceStatusP.textContent = `Лицо на фото не найдено. Попробуйте снова (попытка ${attemptCount}/${maxAttempts})`;
+                                faceStatusP.classList.add('text-red-500');
+                                photoPreviewContainer.classList.add('hidden');
+                                videoContainer.classList.remove('hidden');
+                                capturePhotoBtn.classList.remove('hidden');
+                                capturedPhoto = null;
+                                return;
+                            } else {
+                                faceStatusP.textContent = 'Лицо не найдено после максимального количества попыток';
+                                faceStatusP.classList.add('text-red-500');
+                                statusP.textContent = 'Ошибка: Проверка лица не удалась. Обратитесь к преподователю';
+                                statusP.classList.add('text-red-500');
+                                stopCamera(true);
+                                scanning = true;
+                                isVerifyingFace = false;
+                                return;
+                            }
+                        }
+
+                        const distance = faceapi.euclideanDistance( //вычисляет схожесть лиц
+                            referenceDetections.descriptor,
+                            liveDetections.descriptor
+                        );
+                        console.log('Расстояние между лицами:', distance);
+
+                        if (distance < 0.6) { //Если расстояние < 0.6, подтверждает лицо и отправляет данные. Иначе просит повторить или завершает.
+                            faceStatusP.textContent = 'Лицо подтверждено!';
+                            faceStatusP.classList.add('text-green-500');
+                            statusP.textContent = 'Отправка данных...';
+                            statusP.classList.remove('text-red-500');
+                            statusP.classList.add('text-green-500');
+                            submitAttendance(code, fullName, group, subject, lectureId);
+                        } else {
+                            attemptCount++;
+                            if (attemptCount <= maxAttempts) {
+                                faceStatusP.textContent = `Лицо не совпадает. Попробуйте снова (попытка ${attemptCount}/${maxAttempts})`;
+                                faceStatusP.classList.add('text-red-500');
+                                photoPreviewContainer.classList.add('hidden');
+                                videoContainer.classList.remove('hidden');
+                                capturePhotoBtn.classList.remove('hidden');
+                                capturedPhoto = null;
+                            } else {
+                                faceStatusP.textContent = 'Превышено количество попыток. Обратитесь к преподавателю.';
+                                faceStatusP.classList.add('text-red-500');
+                                statusP.textContent = 'Ошибка: Лицо не подтверждено';
+                                statusP.classList.remove('text-green-500');
+                                statusP.classList.add('text-red-500');
+                                stopCamera(true);
+                                scanning = true;
+                                isVerifyingFace = false;
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Ошибка проверки лица:', err);
+                        faceStatusP.textContent = 'Ошибка проверки лица: ' + err.message;
+                        faceStatusP.classList.add('text-red-500');
+                        stopCamera(true);
+                        scanning = true;
+                        isVerifyingFace = false;
+                    }
+                };
+            } catch (err) {
+                console.error('Ошибка проверки лица:', err);
+                faceStatusP.textContent = 'Ошибка проверки лица: ' + err.message;
+                faceStatusP.classList.add('text-red-500');
+                statusP.textContent = 'Ошибка: Проверка лица не удалась';
+                statusP.classList.add('text-red-500');
+                stopCamera(true);
+                scanning = true;
+                isVerifyingFace = false;
+            }
+        }
+
+        async function submitAttendance(qrCode, fullName, group, subject, lectureId) { // Функция для отправки данных посещаемости.
+            console.log('Отправка данных:', { fullName, group, code: qrCode, subject, lectureId });
+
+            //Отправляет POST-запрос к /checkAndSave с данными.
+            try {
+                const response = await fetch(`${serverUrl}/checkAndSave`, {
+                    method: 'POST',
+                    body: JSON.stringify({ code: qrCode, fullName, group, subject, lectureId }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error occurred: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Ответ от /checkAndSave:', result);
+                //Если успех, показывает зелёное сообщение. Иначе — красную ошибку. В обоих случаях останавливает камеру
+                if (result.success) {
+                    statusP.textContent = 'Отметка успешна!';
+                    statusP.classList.remove('text-red-500');
+                    statusP.classList.add('text-green-500');
+                    stopCamera(true); 
+                    scanning = true;
+                    isVerifyingFace = false; 
+                } else {
+                    statusP.textContent = result.error || 'Ошибка при отправке';
+                    statusP.classList.add('text-red-500');
+                    stopCamera(true);
+                    scanning = true;
+                    isVerifyingFace = false;
+                }
+            } catch (err) {
+                console.error('Ошибка сервера:', err);
+                statusP.textContent = 'Ошибка сервера: ' + err.message;
+                statusP.classList.add('text-red-500');
+                stopCamera(true);
+                scanning = true;
+                isVerifyingFace = false;
+            }
+        }
+    </script>
+</body>
+</html>

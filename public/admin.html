@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель администратора</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: sans-serif; }
+        .modal { display: none !important; }
+        .modal.show { display: flex !important; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .modal-content {
+            max-width: 400px;
+            width: 90%;
+            margin: auto;
+            border: 2px solid #4b5563;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg max-w-4xl w-full mt-6">
+        <h2 class="text-2xl font-bold mb-4 text-center">Панель администратора</h2>
+        <button id="logoutBtn" class="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700 mb-4">Выйти</button>
+
+        <!-- Таблица преподавателей -->
+        <h3 class="text-xl font-bold mb-2">Преподаватели</h3>
+        <button id="addTeacherBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 mb-4">Добавить преподавателя</button>
+        <table id="teachersTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Логин</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="teachersBody"></tbody>
+        </table>
+
+        <!-- Таблица студентов -->
+        <h3 class="text-xl font-bold mb-2 mt-6">Студенты</h3>
+        <button id="addStudentBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 mb-4">Добавить студента</button>
+        <table id="studentsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>ФИО</th>
+                    <th>Группа</th>
+                    <th>Путь к фото</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="studentsBody"></tbody>
+        </table>
+
+        <!-- Модальное окно для преподавателей -->
+        <div id="teacherModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+            <div class="modal-content bg-white p-6">
+                <h3 id="teacherModalTitle" class="text-xl font-bold mb-4"></h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Логин</label>
+                    <input id="teacherUsername" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Пароль</label>
+                    <input id="teacherPassword" type="password" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div class="flex justify-end">
+                    <button id="teacherCancelBtn" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 mr-2">Отмена</button>
+                    <button id="teacherSaveBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно для студентов -->
+        <div id="studentModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+            <div class="modal-content bg-white p-6">
+                <h3 id="studentModalTitle" class="text-xl font-bold mb-4"></h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">ФИО</label>
+                    <input id="studentFullName" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Группа</label>
+                    <input id="studentGroup" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Путь к фото</label>
+                    <input id="studentPhotoPath" type="text" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div class="flex justify-end">
+                    <button id="studentCancelBtn" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 mr-2">Отмена</button>
+                    <button id="studentSaveBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <p id="status" class="mt-4 text-center text-gray-600"></p>
+    </div>
+
+    <script>
+        //константы элементов страницы
+        const teachersTableBody = document.getElementById('teachersBody');
+        const studentsTableBody = document.getElementById('studentsBody');
+        const addTeacherBtn = document.getElementById('addTeacherBtn');
+        const addStudentBtn = document.getElementById('addStudentBtn');
+        const teacherModal = document.getElementById('teacherModal');
+        const studentModal = document.getElementById('studentModal');
+        const teacherModalTitle = document.getElementById('teacherModalTitle');
+        const studentModalTitle = document.getElementById('studentModalTitle');
+        const teacherUsername = document.getElementById('teacherUsername');
+        const teacherPassword = document.getElementById('teacherPassword');
+        const studentFullName = document.getElementById('studentFullName');
+        const studentGroup = document.getElementById('studentGroup');
+        const studentPhotoPath = document.getElementById('studentPhotoPath');
+        const teacherSaveBtn = document.getElementById('teacherSaveBtn');
+        const teacherCancelBtn = document.getElementById('teacherCancelBtn');
+        const studentSaveBtn = document.getElementById('studentSaveBtn');
+        const studentCancelBtn = document.getElementById('studentCancelBtn');
+        const statusP = document.getElementById('status');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        const serverUrl = `${window.location.protocol}//${window.location.hostname}${window.location.port ? ':' + window.location.port : ''}`;
+        let authToken = localStorage.getItem('authToken'); //Получает токен авторизации из localStorage.
+        let currentTeacherId = null;
+        let currentStudentId = null;
+
+        //функция для загрузки таблицы преподавателя
+        async function loadTeachers() { 
+            try { //Отправляет GET-запрос к /teachers с токеном авторизации в заголовке.
+                const response = await fetch(`${serverUrl}/teachers`, {
+                    headers: { 'Authorization': authToken }
+                });
+                const result = await response.json();
+                if (result.success) { //Если запрос успешен, очищает тело таблицы.
+                    teachersTableBody.innerHTML = '';
+                    result.teachers.forEach(teacher => { //Для каждого преподавателя создаёт строку таблицы с ID, логином и кнопками "Редактировать" и "Удалить".
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${teacher.id}</td>
+                            <td>${teacher.username}</td>
+                            <td>
+                                <button class="edit-teacher bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-700" data-id="${teacher.id}" data-username="${teacher.username}">Редактировать</button>
+                                <button class="delete-teacher bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700" data-id="${teacher.id}">Удалить</button>
+                            </td>
+                        `;
+                        teachersTableBody.appendChild(row);
+                    });
+                } else {
+                    statusP.textContent = result.error || 'Ошибка загрузки преподавателей';
+                    statusP.classList.add('text-red-500');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                statusP.textContent = 'Ошибка сервера';
+                statusP.classList.add('text-red-500');
+            }
+        }
+
+        async function loadStudents() { // загрузка таблицы студентов
+            //Загружает студентов, создавая строки с ID, ФИО, группой, путём к фото и кнопками
+            try {
+                const response = await fetch(`${serverUrl}/students`, {
+                    headers: { 'Authorization': authToken }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    studentsTableBody.innerHTML = '';
+                    result.students.forEach(student => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${student.id}</td>
+                            <td>${student.full_name}</td>
+                            <td>${student.group_name}</td>
+                            <td>${student.photo_path}</td>
+                            <td>
+                                <button class="edit-student bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-700" data-id="${student.id}" data-fullname="${student.full_name}" data-group="${student.group_name}" data-photopath="${student.photo_path}">Редактировать</button>
+                                <button class="delete-student bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700" data-id="${student.id}">Удалить</button>
+                            </td>
+                        `;
+                        studentsTableBody.appendChild(row);
+                    });
+                } else {
+                    statusP.textContent = result.error || 'Ошибка загрузки студентов';
+                    statusP.classList.add('text-red-500');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                statusP.textContent = 'Ошибка сервера';
+                statusP.classList.add('text-red-500');
+            }
+        }
+
+        function openTeacherModal(title, id = null, username = '', password = '') { // МОДАЛЬНОЕ ОКНО ДЛЯ РЕДАКТИРОВАНИЯ/ДОБАВЛЕНИЯ ПРЕПОДОВ
+            console.log('Открытие teacherModal:', { title, id, username });
+            teacherModalTitle.textContent = title;
+            currentTeacherId = id;
+            teacherUsername.value = username;
+            teacherPassword.value = password;
+            teacherModal.classList.add('show');
+        }
+
+        function openStudentModal(title, id = null, fullName = '', group = '', photoPath = '') { // МОДАЛЬНОЕ ОКНО ДЛЯ РЕДАКТИРОВАНИЯ/ДОБАВЛЕНИЯ СТУДЕНТОВ
+            console.log('Открытие studentModal:', { title, id, fullName, group, photoPath });
+            studentModalTitle.textContent = title;
+            currentStudentId = id;
+            studentFullName.value = fullName;
+            studentGroup.value = group;
+            studentPhotoPath.value = photoPath;
+            studentModal.classList.add('show');
+        }
+
+        function closeModals() { // ЗАКРЫТИЕ МОДАЛЬНОГО ОКНА
+            console.log('Закрытие модальных окон');
+            teacherModal.classList.remove('show');
+            studentModal.classList.remove('show');
+            teacherModal.style.display = 'none';
+            studentModal.style.display = 'none';
+            statusP.textContent = '';
+            statusP.classList.remove('text-red-500', 'text-green-500');
+        }
+
+        addTeacherBtn.addEventListener('click', (e) => { // КНОПКА ДОБАВЛЕНИЯ УЧИТЕЛЯ
+            e.preventDefault();
+            console.log('Клик по addTeacherBtn');
+            openTeacherModal('Добавить преподавателя');
+        });
+
+        addStudentBtn.addEventListener('click', (e) => { // КНОПКА ДОБАВЛЕНИЯ СТУДЕНТА
+            e.preventDefault();
+            console.log('Клик по addStudentBtn');
+            openStudentModal('Добавить студента');
+        });
+
+        teacherCancelBtn.addEventListener('click', () => { // КНОПКА ЗАКРЫТИЯ МОДАЛЬНОГО ОКНА ПРЕПОДА
+            console.log('Клик по teacherCancelBtn');
+            closeModals();
+        });
+
+        studentCancelBtn.addEventListener('click', () => { // КНОПКА ЗАКРЫТИЯ МОДАЛЬНОГО ОКНА СТУДЕНТА
+            console.log('Клик по studentCancelBtn');
+            closeModals();
+        });
+
+        teacherSaveBtn.addEventListener('click', async () => { // КНОПКА СОХРАНЕНИЯ ИЗМЕНЕНИЙ УЧИТЕЛЯ
+            const username = teacherUsername.value.trim();
+            const password = teacherPassword.value.trim();
+            try { //Если currentTeacherId есть, отправляет PUT для обновления, иначе POST для создания.
+                let response;
+                if (currentTeacherId) {
+                    response = await fetch(`${serverUrl}/teachers/${currentTeacherId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': authToken
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                } else {
+                    response = await fetch(`${serverUrl}/teachers`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': authToken
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                }
+                const result = await response.json(); //Обрабатывает ответ: показывает успех зелёным или ошибку красным.
+                if (result.success) {
+                    statusP.textContent = currentTeacherId ? 'Преподаватель обновлён!' : 'Преподаватель добавлен!';
+                    statusP.classList.add('text-green-500');
+                    closeModals();
+                    loadTeachers();
+                } else {
+                    statusP.textContent = result.error || 'Ошибка операции';
+                    statusP.classList.add('text-red-500');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                statusP.textContent = 'Ошибка сервера';
+                statusP.classList.add('text-red-500');
+            }
+        });
+
+        studentSaveBtn.addEventListener('click', async () => { // КНОПКА СОХРАНЕНИЯ ИЗМЕНЕНИЙ СТУДЕНТА
+            //Получает данные студента.
+            const full_name = studentFullName.value.trim();
+            const group_name = studentGroup.value.trim();
+            const photo_path = studentPhotoPath.value.trim();
+            try { //PUT или POST в зависимости от currentStudentId.
+                let response;
+                if (currentStudentId) {
+                    response = await fetch(`${serverUrl}/students/${currentStudentId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': authToken
+                        },
+                        body: JSON.stringify({ full_name, group_name, photo_path })
+                    });
+                } else {
+                    response = await fetch(`${serverUrl}/students`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': authToken
+                        },
+                        body: JSON.stringify({ full_name, group_name, photo_path })
+                    });
+                }
+                const result = await response.json();
+                if (result.success) {
+                    statusP.textContent = currentStudentId ? 'Студент обновлён!' : 'Студент добавлен!';
+                    statusP.classList.add('text-green-500');
+                    closeModals();
+                    loadStudents();
+                } else {
+                    statusP.textContent = result.error || 'Ошибка операции';
+                    statusP.classList.add('text-red-500');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                statusP.textContent = 'Ошибка сервера';
+                statusP.classList.add('text-red-500');
+            }
+        });
+
+        teachersTableBody.addEventListener('click', async (e) => { // ОБРАБОТЧИК КЛИКОВ ПРЕПОДА
+           // клик "Редактировать", открывает модальное окно с данными.
+            if (e.target.classList.contains('edit-teacher')) {
+                const id = e.target.dataset.id;
+                const username = e.target.dataset.username;
+                openTeacherModal('Редактировать преподавателя', id, username);
+            } else if (e.target.classList.contains('delete-teacher')) { //клик по "Удалить", запрашивает подтверждение и отправляет DELETE-запрос.
+                if (confirm('Вы уверены, что хотите удалить преподавателя?')) {
+                    const id = e.target.dataset.id;
+                    try {
+                        const response = await fetch(`${serverUrl}/teachers/${id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': authToken }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            statusP.textContent = 'Преподаватель удалён!';
+                            statusP.classList.add('text-green-500');
+                            loadTeachers();
+                        } else {
+                            statusP.textContent = result.error || 'Ошибка удаления';
+                            statusP.classList.add('text-red-500');
+                        }
+                    } catch (error) {
+                        console.error('Ошибка:', error);
+                        statusP.textContent = 'Ошибка сервера';
+                        statusP.classList.add('text-red-500');
+                    }
+                }
+            }
+        });
+
+        studentsTableBody.addEventListener('click', async (e) => { // ОБРАБОТЧИК КЛИКОВ СТУДЕНТА
+            if (e.target.classList.contains('edit-student')) {
+                const id = e.target.dataset.id;
+                const fullName = e.target.dataset.fullname;
+                const group = e.target.dataset.group;
+                const photoPath = e.target.dataset.photopath;
+                openStudentModal('Редактировать студента', id, fullName, group, photoPath);
+            } else if (e.target.classList.contains('delete-student')) {
+                if (confirm('Вы уверены, что хотите удалить студента?')) {
+                    const id = e.target.dataset.id;
+                    try {
+                        const response = await fetch(`${serverUrl}/students/${id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': authToken }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            statusP.textContent = 'Студент удалён!';
+                            statusP.classList.add('text-green-500');
+                            loadStudents();
+                        } else {
+                            statusP.textContent = result.error || 'Ошибка удаления';
+                            statusP.classList.add('text-red-500');
+                        }
+                    } catch (error) {
+                        console.error('Ошибка:', error);
+                        statusP.textContent = 'Ошибка сервера';
+                        statusP.classList.add('text-red-500');
+                    }
+                }
+            }
+        });
+
+        //Обработчик выхода: удаляет токен и перенаправляет на главную страницу.
+        logoutBtn.addEventListener('click', () => {
+            console.log('Клик по logoutBtn');
+            localStorage.removeItem('authToken');
+            window.location.href = '/';
+        });
+
+        //При загрузке скрывает модальные окна.
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM загружен, проверка модальных окон');
+            teacherModal.classList.remove('show');
+            studentModal.classList.remove('show');
+            teacherModal.style.display = 'none';
+            studentModal.style.display = 'none';
+        });
+
+        //Проверяет наличие токена, загружает данные или перенаправляет.
+        console.log('Инициализация admin.html, authToken:', authToken);
+        if (!authToken) {
+            console.log('Нет токена, перенаправление на /');
+            window.location.href = '/';
+        } else {
+            loadTeachers();
+            loadStudents();
+        }
+    </script>
+</body>
+</html>
